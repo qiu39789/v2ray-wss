@@ -5,7 +5,7 @@
 运行脚本：
 
 ```
-wget git.io/tcp-wss.sh && bash tcp-wss.sh
+wget https://raw.githubusercontent.com/qiu39789/v2ray-wss/refs/heads/qiu39789-patch-1/tcp-wss.sh && bash tcp-wss.sh
 ```
 
 **便宜VPS推荐：** https://hostalk.net/deals.html
