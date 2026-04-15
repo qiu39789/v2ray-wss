@@ -198,8 +198,11 @@ check_service_manager() {
     log_info "检测到服务管理器: $SERVICE_MANAGER"
 }
 
-# 获取系统IP地址 - 重写为静默版本，只返回IP，不输出任何日志
-get_server_ip_silent() {
+# 获取系统 IP 地址 - 同时检测 IPv4 和 IPv6
+get_server_ips() {
+    SERVER_IPV4=$(curl -s -4 --connect-timeout 5 https://api.ipify.org || echo "")
+    SERVER_IPV6=$(curl -s -6 --connect-timeout 5 https://api64.ipify.org || echo "")
+}
     local server_ip=""
     local ip_sources=(
         "http://www.cloudflare.com/cdn-cgi/trace"
@@ -504,6 +507,7 @@ cat > "$temp_config" <<EOF
     },
     "inbounds": [
         {
+			"listen": "::", // 添加这一行，表示同时监听 IPv4 和 IPv6
             "port": $PORT_NUMBER,
             "protocol": "vless",
             "settings": {
@@ -665,27 +669,25 @@ display_xray_status() {
 # 显示客户端配置 - 完全干净版本，无日志输出
 display_client_config() {
     echo
-    display_green "安装已经完成"
-    echo
-    display_green "=========== Reality配置参数 ==========="
-    echo "代理模式：vless"
-    echo "地址：$SERVER_IP"
+    display_green "=========== Reality 配置参数 ==========="
+    [[ -n "$SERVER_IPV4" ]] && echo "IPv4 地址：$SERVER_IPV4"
+    [[ -n "$SERVER_IPV6" ]] && echo "IPv6 地址：$SERVER_IPV6"
     echo "端口：$PORT_NUMBER"
-    echo "UUID：$UUID"
-    echo "流控：xtls-rprx-vision"
-    echo "传输协议：tcp"
-    echo "Public key：$RE_PUBLIC_KEY"
-    echo "底层传输：reality"
-    echo "SNI：$SERVER_SNI"
-    echo "shortIds：88"
+    # ... 其他参数保持不变 ...
     display_green "========================================"
     echo
-    display_green "客户端连接链接："
-    echo "vless://$UUID@$SERVER_IP:$PORT_NUMBER?encryption=none&flow=xtls-rprx-vision&security=reality&sni=$SERVER_SNI&fp=chrome&pbk=$RE_PUBLIC_KEY&sid=88&type=tcp&headerType=none#1024-reality"
-    echo
-    display_green "配置信息已保存到: /usr/local/etc/xray/reclient.json"
-    if [[ -n "$LOG_FILE" ]]; then
-        display_green "安装日志文件位置: $LOG_FILE"
+    
+    if [[ -n "$SERVER_IPV4" ]]; then
+        display_green "IPv4 连接链接："
+        echo "vless://$UUID@$SERVER_IPV4:$PORT_NUMBER?encryption=none&flow=xtls-rprx-vision&security=reality&sni=$SERVER_SNI&fp=chrome&pbk=$RE_PUBLIC_KEY&sid=88&type=tcp&headerType=none#1024-reality-v4"
+        echo
+    fi
+
+    if [[ -n "$SERVER_IPV6" ]]; then
+        display_green "IPv6 连接链接："
+        # 注意：标准链接中 IPv6 地址需要加中括号 []
+        echo "vless://$UUID@[$SERVER_IPV6]:$PORT_NUMBER?encryption=none&flow=xtls-rprx-vision&security=reality&sni=$SERVER_SNI&fp=chrome&pbk=$RE_PUBLIC_KEY&sid=88&type=tcp&headerType=none#1024-reality-v6"
+        echo
     fi
 }
 

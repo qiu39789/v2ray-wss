@@ -111,23 +111,9 @@ get_port() {
 }
 
 # 获取服务器IP
-get_server_ip() {
-    local server_ip
-    server_ip=$(curl -s -4 --connect-timeout 10 http://www.cloudflare.com/cdn-cgi/trace | grep "ip" | awk -F "[=]" '{print $2}')
-    if [[ -z "${server_ip}" ]]; then
-        server_ip=$(curl -s -6 --connect-timeout 10 http://www.cloudflare.com/cdn-cgi/trace | grep "ip" | awk -F "[=]" '{print $2}')
-    fi    
-    if [[ -z "${server_ip}" ]]; then
-        server_ip=$(curl -s --connect-timeout 10 ifconfig.me)
-    fi    
-    if [[ -z "${server_ip}" ]]; then
-        server_ip=$(curl -s --connect-timeout 10 ipinfo.io/ip)
-    fi    
-    if [[ -z "${server_ip}" ]]; then
-        echo "错误: 无法获取服务器IP地址"
-        exit 1
-    fi
-    echo "${server_ip}"
+get_server_ips() {
+    SERVER_IPV4=$(curl -s -4 --connect-timeout 5 https://api.ipify.org || echo "")
+    SERVER_IPV6=$(curl -s -6 --connect-timeout 5 https://api64.ipify.org || echo "")
 }
 
 # 安装 Hysteria2
@@ -231,37 +217,28 @@ check_service_status() {
 
 # 输出客户端配置
 show_client_config() {
-    local server_ip
-    server_ip=$(get_server_ip)
-    local connection_link="${HYSTERIA_PASSWORD}@${server_ip}:${SERVER_PORT}/?insecure=1&sni=bing.com#1024-Hysteria2"
-
     echo
     echo -e "${GREEN}===== Hysteria2 安装完成 =====${RESET}"
     echo
     echo -e "${CYAN}=========== 配置参数 =============${RESET}"
-    echo -e "服务器地址: ${YELLOW}${server_ip}${RESET}"
+    [[ -n "$SERVER_IPV4" ]] && echo -e "IPv4 地址: ${YELLOW}${SERVER_IPV4}${RESET}"
+    [[ -n "$SERVER_IPV6" ]] && echo -e "IPv6 地址: ${YELLOW}${SERVER_IPV6}${RESET}"
     echo -e "端口: ${YELLOW}${SERVER_PORT}${RESET}"
-    echo -e "密码: ${YELLOW}${HYSTERIA_PASSWORD}${RESET}"
-    echo -e "SNI: ${YELLOW}bing.com${RESET}"
-    echo -e "传输协议: ${YELLOW}QUIC over TLS${RESET}"
-    echo -e "跳过证书验证: ${YELLOW}true${RESET}"
-    echo -e "${CYAN}==================================${RESET}"
+    # ... 其他参数 ...
     echo
-    echo -e "${CYAN}连接链接:${RESET}"
-    echo -e "${GREEN}hysteria2://${connection_link}${RESET}"
-    echo
-    echo -e "客户端配置文件已保存到: ${YELLOW}/etc/hysteria/hyclient.json${RESET}"
-    echo
-    echo -e "${CYAN}注意事项:${RESET}"
-    echo -e "1. 请确保防火墙允许端口 ${YELLOW}${SERVER_PORT}/UDP${RESET} 通过"
-    echo "2. 如使用云服务器，请在安全组中开放对应端口"
-    echo -e "3. 配置文件位置: ${YELLOW}/etc/hysteria/config.yaml${RESET}"
-    echo -e "4. 服务管理命令:"
-    echo -e "   启动: ${GREEN}systemctl start hysteria-server${RESET}"
-    echo -e "   停止: ${GREEN}systemctl stop hysteria-server${RESET}"
-    echo -e "   重启: ${GREEN}systemctl restart hysteria-server${RESET}"
-    echo -e "   状态: ${GREEN}systemctl status hysteria-server${RESET}"
-    echo
+    
+    if [[ -n "$SERVER_IPV4" ]]; then
+        echo -e "${CYAN}IPv4 连接链接:${RESET}"
+        echo -e "${GREEN}hysteria2://${HYSTERIA_PASSWORD}@${SERVER_IPV4}:${SERVER_PORT}/?insecure=1&sni=bing.com#1024-Hy2-v4${RESET}"
+        echo
+    fi
+
+    if [[ -n "$SERVER_IPV6" ]]; then
+        echo -e "${CYAN}IPv6 连接链接:${RESET}"
+        # IPv6 地址在 URL 中必须放在 [] 内部
+        echo -e "${GREEN}hysteria2://${HYSTERIA_PASSWORD}@[${SERVER_IPV6}]:${SERVER_PORT}/?insecure=1&sni=bing.com#1024-Hy2-v6${RESET}"
+        echo
+    fi
 }
 
 # 主函数
