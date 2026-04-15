@@ -1,16 +1,22 @@
 #!/bin/bash
-# Hysteria2 Dual-Stack Version (Improved IP Detection)
+# Hysteria2 Dual-Stack Version (Fixed Permissions & IP Detection)
+
+# 确保以root用户运行
+if [[ $EUID -ne 0 ]]; then
+    echo "错误: 此脚本必须以root身份运行!"
+    exit 1
+fi
 
 # 1. 增强型双栈 IP 获取函数
 get_server_ips() {
     echo "正在获取服务器公网 IP..."
-    # 尝试多个来源获取 IPv4
+    # 尝试获取 IPv4
     SERVER_IPV4=$(curl -s4m 5 https://api.ipify.org || curl -s4m 5 https://ifconfig.me || curl -s4m 5 https://icanhazip.com)
     
-    # 尝试多个来源获取 IPv6
+    # 尝试获取 IPv6
     SERVER_IPV6=$(curl -s6m 5 https://api64.ipify.org || curl -s6m 5 https://ifconfig.co || curl -s6m 5 https://icanhazip.com)
 
-    # 如果 curl 还是没获取到，尝试从本地网卡抓取
+    # 保底方案：从本地网卡抓取
     if [[ -z "$SERVER_IPV4" ]]; then
         SERVER_IPV4=$(ip -4 addr show | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v '127.0.0.1' | head -n 1)
     fi
@@ -19,51 +25,72 @@ get_server_ips() {
     fi
 }
 
-# 2. 安装 Hy2
+# 2. 安装 Hysteria2
 install_hy2() {
-    echo "正在下载安装 Hysteria2..."
-    bash <(curl -fsSL https://get.hy2.sh/)
+    echo "正在下载安装 Hysteria2 官方程序..."
+    if ! bash <(curl -fsSL https://get.hy2.sh/); then
+        echo "安装失败，请检查网络连接"
+        exit 1
+    fi
     
-    # 随机端口
+    # 随机生成端口和密码
     SERVER_PORT=$(shuf -i 2000-65000 -n 1)
-    # 随机密码
     HY_PASSWORD=$(cat /proc/sys/kernel/random/uuid)
     
+    # 创建配置目录
     mkdir -p /etc/hysteria
-    # 生成自签名证书
+    
+    echo "正在生成自签名 SSL 证书..."
     openssl req -x509 -nodes -newkey ec:<(openssl ecparam -name prime256v1) \
-        -keyout /etc/hysteria/server.key -out /etc/hysteria/server.crt \
+        -keyout /etc/hysteria/server.key \
+        -out /etc/hysteria/server.crt \
         -subj "/CN=bing.com" -days 36500
 
-    # 写入配置
+    # 【关键修复：设置权限，让 hysteria 用户可以读取证书文件】
+    if id hysteria &>/dev/null; then
+        chown -R hysteria:hysteria /etc/hysteria
+    fi
+    chmod 644 /etc/hysteria/server.key
+    chmod 644 /etc/hysteria/server.crt
+
+    echo "正在生成配置文件..."
     cat > /etc/hysteria/config.yaml <<EOF
 listen: :$SERVER_PORT
+
 tls:
   cert: /etc/hysteria/server.crt
   key: /etc/hysteria/server.key
+
 auth:
   type: password
   password: $HY_PASSWORD
+
 masquerade:
   type: proxy
   proxy:
     url: https://bing.com
     rewriteHost: true
+
+quic:
+  initStreamReceiveWindow: 26843545 
+  maxStreamReceiveWindow: 26843545 
+  initConnReceiveWindow: 67108864 
+  maxConnReceiveWindow: 67108864 
 EOF
     
-    # 启动服务
+    # 启动并设置开机自启
     systemctl enable hysteria-server
     systemctl restart hysteria-server
 }
 
-# 3. 输出结果
+# 3. 输出结果和链接
 show_results() {
     clear
     echo "=========== Hy2 双栈配置 ==========="
     if [[ -n "$SERVER_IPV4" ]]; then
         echo "IPv4 地址: $SERVER_IPV4"
     else
-        echo "IPv4 地址: 未检测到 (请手动替换链接中的IP)"
+        echo "IPv4 地址: 未检测到"
     fi
     
     if [[ -n "$SERVER_IPV6" ]]; then
@@ -76,23 +103,28 @@ show_results() {
     echo "密码: $HY_PASSWORD"
     echo "===================================="
     
-    # 即使 IP 没获取到，也显示出模板链接
-    local display_v4=${SERVER_IPV4:-"你的IPv4"}
-    local display_v6=${SERVER_IPV6:-"你的IPv6"}
+    # 准备链接显示的变量
+    local v4_link=${SERVER_IPV4:-"你的IPv4"}
+    local v6_link=${SERVER_IPV6:-"你的IPv6"}
 
-    echo "IPv4 链接:"
-    echo "hysteria2://$HY_PASSWORD@$display_v4:$SERVER_PORT/?insecure=1&sni=bing.com#Hy2_v4"
+    echo "IPv4 链接 (直接导入 v2rayN):"
+    echo "hysteria2://$HY_PASSWORD@$v4_link:$SERVER_PORT/?insecure=1&sni=bing.com#Hy2_v4"
     echo ""
     
-    if [[ -n "$SERVER_IPV6" || "$display_v6" != "你的IPv6" ]]; then
-        echo "IPv6 链接:"
-        echo "hysteria2://$HY_PASSWORD@[$display_v6]:$SERVER_PORT/?insecure=1&sni=bing.com#Hy2_v6"
+    # 如果有 IPv6，则输出 IPv6 链接
+    if [[ -n "$SERVER_IPV6" || "$v6_link" != "你的IPv6" ]]; then
+        echo "IPv6 链接 (需本地支持IPv6):"
+        echo "hysteria2://$HY_PASSWORD@[$v6_link]:$SERVER_PORT/?insecure=1&sni=bing.com#Hy2_v6"
     fi
+    
     echo "===================================="
-    echo "注意：请确保防火墙已开启 UDP $SERVER_PORT 端口"
+    echo "服务状态："
+    systemctl is-active hysteria-server
+    echo "===================================="
+    echo "提示：请务必在安全组放行 UDP 端口 $SERVER_PORT"
 }
 
-# 执行
+# 执行流程
 get_server_ips
 install_hy2
 show_results
