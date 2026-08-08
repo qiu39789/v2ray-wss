@@ -181,11 +181,11 @@ install_ssrust(){
 }
 
 install_reality(){
-    wget https://raw.githubusercontent.com/yeahwu/v2ray-wss/main/reality.sh && bash reality.sh
+    wget https://raw.githubusercontent.com/qiu39789/v2ray-wss/refs/heads/qiu39789-patch-1/reality.sh && bash reality.sh
 }
 
 install_hy2(){
-    wget https://raw.githubusercontent.com/yeahwu/v2ray-wss/main/hy2.sh && bash hy2.sh
+    wget https://raw.githubusercontent.com/qiu39789/v2ray-wss/refs/heads/qiu39789-patch-1/hy2.sh && bash hy2.sh
 }
 
 install_https(){
